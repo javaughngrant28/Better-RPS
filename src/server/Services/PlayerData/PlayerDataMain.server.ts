@@ -1,6 +1,6 @@
 import { Players } from "@rbxts/services";
 import DefaultValues from "./DefaultData";
-import TransformData from "server/Modules/TransformDataToInstance";
+import TransformData from "shared/Modules/TransformDataToInstance";
 
 
 
