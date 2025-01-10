@@ -24,6 +24,7 @@
     "typescript": "^5.7.3"
   },
   "dependencies": {
+    "@rbxts/janitor": "^1.17.0-ts.1",
     "@rbxts/services": "^1.5.5"
   }
 }
