@@ -3,8 +3,8 @@ interface Data {
     [key: string]: unknown,
 }
 
-function CreateInstanceFromValue(name: string, value: unknown): Instance | void{
-    let valueInstance: undefined | Instance
+function CreateInstanceFromValue(name: string, value: unknown, parentInstance: Instance): void{
+    let valueInstance: undefined | ValueBase
 
     if (typeIs(value,'boolean')){
         valueInstance = new Instance('BoolValue')
@@ -22,10 +22,10 @@ function CreateInstanceFromValue(name: string, value: unknown): Instance | void{
         valueInstance = new Instance('Vector3Value')
     }
 
-    if (valueInstance){
-        valueInstance.Name = name
-        return valueInstance
-    }
+    assert(valueInstance, `Undefined Instance Type Given: ${typeOf(value)}}`)
+    valueInstance.Name = name
+    valueInstance.Value = value
+    valueInstance.Parent = parentInstance
 }
 
 function CreateInstanceFromTable(name: string, dataTable: unknown, parentInstance: Instance): void {
@@ -41,9 +41,8 @@ function CreateInstanceFromTable(name: string, dataTable: unknown, parentInstanc
         if (typeIs(value, "table")) {
             CreateInstanceFromTable(tostring(index), value, folder); // Use folder as parent
         } else {
-            const valueInstance: Instance | void = CreateInstanceFromValue(tostring(index), value);
-            assert(valueInstance, `Undefined Instance Type Given: ${typeOf(value)}}`);
-            valueInstance.Parent = folder; // Attach to folder
+            CreateInstanceFromValue(tostring(index), value, folder);
+           
         }
     }
 }
@@ -53,9 +52,7 @@ export default function TransformData(parentInstance: Instance, data: Data): voi
     
     for (const [index, value] of pairs(data)){
         if (!typeIs(value, 'table')) {
-            const valueInstance: Instance | void = CreateInstanceFromValue(tostring(index),value)
-            assert(valueInstance,`Undefined Instance Type Given: ${typeOf(value)}}`)
-            valueInstance.Parent = parentInstance
+         CreateInstanceFromValue(tostring(index),value,parentInstance)
         } else {
             CreateInstanceFromTable(tostring(index), value, parentInstance)
         }
