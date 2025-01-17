@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 /** 
  * 
@@ -19,7 +20,7 @@
  * - Single RemoteEvent for all communication (with optional namespaces).
  * - Namespace support: Isolate events and validate methods.
  * - Auto-cleanup with `.Destroy()` to prevent memory leaks.
- * - Timeout for waiting on RemoteEvent creation (default: 5 seconds).
+ * - Timeout for waiting on RemoteEvent creation (default: 10 seconds).
  * - Warnings for unhandled events to help with debugging.
  *
  * Server API:
@@ -140,14 +141,23 @@ class NetworkClient {
 
     On(method: string, callback: (...args: unknown[]) => void) {
         const connection = this.remoteEvent.OnClientEvent.Connect((receivedMethod, ...args) => {
-            if (receivedMethod === method) {
-                callback(...args);
+            // Check if receivedMethod is a string
+            if (typeIs(receivedMethod, "string") && receivedMethod === method) {
+                // Verify if args is a table (array in Roblox terms)
+                if (typeIs(args, "table")) {
+                    callback(...(args as unknown[]));
+                } else {
+                    warn("Received arguments are not a valid array.");
+                }
             } else {
                 warn(`No listener is attached for method "${receivedMethod}" on namespace "${this.namespace ?? "default"}".`);
             }
         });
         this.connections.push(connection);
     }
+
+
+
 
     Destroy() {
         for (const connection of this.connections) {
