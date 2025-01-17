@@ -36,6 +36,14 @@
 				}
 			}
 		},
+		"StarterGui":{
+			"$className": "StarterGui",
+			"Interface": {
+				"$className": "Folder",
+				"$path": "src/Interface",
+				"$ignoreUnknownInstances": true
+			}
+		},
 		"Workspace": {
 			"$className": "Workspace",
 			"$properties": {
