@@ -40,7 +40,7 @@
 			"$className": "StarterGui",
 			"Interface": {
 				"$className": "Folder",
-				"$path": "src/Interface",
+				"$path": "out/Interface",
 				"$ignoreUnknownInstances": true
 			}
 		},
