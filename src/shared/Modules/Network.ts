@@ -1,118 +1,165 @@
-import { Players, RunService, ReplicatedStorage } from "@rbxts/services";
 
-const NO_LISTENER_WARNING = "Nothing listening to %s";
+/** 
+ * 
 
-// Create or fetch the RemoteEvent and RemoteFunction dynamically
-function getOrCreateRemote<T extends Instance>(
-    parent: Instance,
-    className: keyof CreatableInstances,
-    name: string,
-): T {
-    let remote = parent.FindFirstChild(name) as T;
-    if (!remote) {
-        remote = new Instance(className) as unknown as T;
-        remote.Name = name;
-        remote.Parent = parent;
+               (          )                           )   (         )  
+   (     (     )\ )    ( /(        *   )  (  (     ( /(   )\ )   ( /(  
+ ( )\    )\   (()/(    )\()) (   ` )  /(  )\))(   ')\()) (()/(   )\()) 
+ )((_)((((_)(  /(_))  ((_)\  )\   ( )(_))((_)()\ )((_)\   /(_))|((_)\  
+((_)_  )\ _ )\(_))_    _((_)((_) (_(_()) _(())\_)() ((_) (_))  |_ ((_) 
+ | _ ) (_)_\(_)|   \  | \| || __||_   _| \ \((_)/ // _ \ | _ \ | |/ /  
+ | _ \  / _ \  | |) | | .` || _|   | |    \ \/\/ /| (_) ||   /   ' <   
+ |___/ /_/ \_\ |___/  |_|\_||___|  |_|     \_/\_/  \___/ |_|_\  _|\_\  
+                                                                       
+                                                                                                                                                                                                                                                          
+
+ * A lightweight and powerful networking module for Roblox TS.
+ *
+ * Features:
+ * - Single RemoteEvent for all communication (with optional namespaces).
+ * - Namespace support: Isolate events and validate methods.
+ * - Auto-cleanup with `.Destroy()` to prevent memory leaks.
+ * - Timeout for waiting on RemoteEvent creation (default: 5 seconds).
+ * - Warnings for unhandled events to help with debugging.
+ *
+ * Server API:
+ * - `new NetworkServer(namespace?: string, methods?: string[])`: Creates a server instance.
+ * - `.Fire(player: Player, method: string, ...args)`: Sends an event to a specific player.
+ * - `.FireAll(method: string, ...args)`: Sends an event to all players.
+ * - `.FireList(players: Player[], method: string, ...args)`: Sends an event to a list of players.
+ * - `.On(method: string, callback: (player: Player, ...args) => void)`: Listens to an event.
+ * - `.Destroy()`: Cleans up all connections.
+
+ * Client API:
+ * - `new NetworkClient(namespace?: string)`: Creates a client instance.
+ * - `.Fire(method: string, ...args)`: Sends an event to the server.
+ * - `.On(method: string, callback: (...args) => void)`: Listens to an event.
+ * - `.Destroy()`: Cleans up all connections.
+ */
+
+
+import { ReplicatedStorage, Players, RunService } from "@rbxts/services";
+
+const DEFAULT_REMOTE_EVENT_NAME = "NetworkRemoteEvent";
+const REMOTE_WAIT_TIMEOUT = 10;
+
+function getOrCreateRemoteEvent(eventName: string): RemoteEvent {
+    let remoteEvent = ReplicatedStorage.FindFirstChild(eventName) as RemoteEvent | undefined;
+    if (!remoteEvent) {
+        remoteEvent = new Instance("RemoteEvent");
+        remoteEvent.Name = eventName;
+        remoteEvent.Parent = ReplicatedStorage;
     }
-    return remote;
+    return remoteEvent;
 }
 
-// Dynamically create or get the remotes
-const sendData = getOrCreateRemote<RemoteEvent>(ReplicatedStorage, "RemoteEvent", "SendData");
-const getData = getOrCreateRemote<RemoteFunction>(ReplicatedStorage, "RemoteFunction", "GetData");
-
-// Listener type definition
-export interface Listener {
-    Command: string;
-    Callback: (player?: Player, ...args: unknown[]) => unknown;
-    StopListening: () => void;
+function waitForRemoteEvent(eventName: string): RemoteEvent {
+    const remoteEvent = ReplicatedStorage.WaitForChild(eventName, REMOTE_WAIT_TIMEOUT) as RemoteEvent | undefined;
+    if (!remoteEvent) {
+        throw `RemoteEvent "${eventName}" did not appear within ${REMOTE_WAIT_TIMEOUT} seconds.`;
+    }
+    return remoteEvent;
 }
 
-const listeners: Listener[] = [];
+// NetworkServer class
+class NetworkServer {
+    private remoteEvent: RemoteEvent;
+    private namespace?: string;
+    private methods?: string[];
+    private connections: RBXScriptConnection[] = [];
 
-const RemoteMessenger = {
-    // Add a listener to handle specific commands
-    AddListener(commandName: string, func: Listener["Callback"]): Listener {
-        const listener: Listener = {
-            Command: commandName,
-            Callback: func,
-            StopListening() {
-                const index = listeners.indexOf(listener);
-                if (index !== -1) {
-                    listeners.remove(index);
-                }
-            },
-        };
-
-        listeners.push(listener);
-        return listener;
-    },
-
-    // Send a command to the server
-    SendServer(cmd: string, ...args: unknown[]) {
-        sendData.FireServer(cmd, ...args);
-    },
-
-    // Send a command to a specific client
-    SendClient(player: Player, cmd: string, ...args: unknown[]) {
-        sendData.FireClient(player, cmd, ...args);
-    },
-
-    // Send a command to all clients
-    SendAllClients(cmd: string, ...args: unknown[]) {
-        sendData.FireAllClients(cmd, ...args);
-    },
-
-    // Request a value from the server
-    GetFromServer(cmd: string, ...args: unknown[]): unknown {
-        return getData.InvokeServer(cmd, ...args);
-    },
-
-    // Request a value from a specific client
-    GetFromClient(player: Player, cmd: string, ...args: unknown[]): unknown {
-        return getData.InvokeClient(player, cmd, ...args);
-    },
-
-    // Server receives commands
-    _ServerReceive(player: Player, cmd: string, ...args: unknown[]) {
-        for (const listener of listeners) {
-            if (listener.Command === cmd) {
-                return listener.Callback(player, ...(args as unknown[]));
-            }
+    constructor(namespace?: string, methods?: string[]) {
+        if (namespace && (!methods || methods.size() === 0)) {
+            throw "If a namespace is provided, at least one method must be defined.";
         }
-        warn(string.format(NO_LISTENER_WARNING, cmd));
-    },
-
-    // Client receives commands
-    _ClientReceive(cmd: string, ...args: unknown[]) {
-        for (const listener of listeners) {
-            if (listener.Command === cmd) {
-                // Explicitly cast `args` to align with the callback's expected parameters
-                return listener.Callback(...(args as [Player, ...unknown[]]));
-            }
-        }
-        warn(string.format(NO_LISTENER_WARNING, cmd));
+        this.namespace = namespace;
+        this.methods = methods;
+        const eventName = namespace ? `${DEFAULT_REMOTE_EVENT_NAME}_${namespace}` : DEFAULT_REMOTE_EVENT_NAME;
+        this.remoteEvent = getOrCreateRemoteEvent(eventName);
     }
 
+    Fire(player: Player, method: string, ...args: unknown[]) {
+        if (this.namespace && this.methods && !this.methods.includes(method)) {
+            throw `Method "${method}" is not defined in the namespace "${this.namespace}".`;
+        }
+        this.remoteEvent.FireClient(player, method, ...args);
+    }
+
+    FireAll(method: string, ...args: unknown[]) {
+        if (this.namespace && this.methods && !this.methods.includes(method)) {
+            throw `Method "${method}" is not defined in the namespace "${this.namespace}".`;
+        }
+        this.remoteEvent.FireAllClients(method, ...args);
+    }
+
+    FireList(players: Player[], method: string, ...args: unknown[]) {
+        if (this.namespace && this.methods && !this.methods.includes(method)) {
+            throw `Method "${method}" is not defined in the namespace "${this.namespace}".`;
+        }
+        for (const player of players) {
+            this.remoteEvent.FireClient(player, method, ...args);
+        }
+    }
+
+    On(method: string, callback: (player: Player, ...args: unknown[]) => void) {
+        if (this.namespace && this.methods && !this.methods.includes(method)) {
+            throw `Method "${method}" is not defined in the namespace "${this.namespace}".`;
+        }
+        const connection = this.remoteEvent.OnServerEvent.Connect((player, receivedMethod, ...args) => {
+            if (receivedMethod === method) {
+                callback(player, ...args);
+            }
+        });
+        this.connections.push(connection);
+    }
+
+    Destroy() {
+        for (const connection of this.connections) {
+            connection.Disconnect();
+        }
+        this.connections.clear();
+        print(`NetworkServer for namespace "${this.namespace ?? "default"}" has been cleaned up.`);
+    }
+}
+
+// NetworkClient class
+class NetworkClient {
+    private remoteEvent: RemoteEvent;
+    private namespace?: string;
+    private connections: RBXScriptConnection[] = [];
+
+    constructor(namespace?: string) {
+        this.namespace = namespace;
+        const eventName = namespace ? `${DEFAULT_REMOTE_EVENT_NAME}_${namespace}` : DEFAULT_REMOTE_EVENT_NAME;
+        this.remoteEvent = waitForRemoteEvent(eventName);
+    }
+
+    Fire(method: string, ...args: unknown[]) {
+        this.remoteEvent.FireServer(method, ...args);
+    }
+
+    On(method: string, callback: (...args: unknown[]) => void) {
+        const connection = this.remoteEvent.OnClientEvent.Connect((receivedMethod, ...args) => {
+            if (receivedMethod === method) {
+                callback(...args);
+            } else {
+                warn(`No listener is attached for method "${receivedMethod}" on namespace "${this.namespace ?? "default"}".`);
+            }
+        });
+        this.connections.push(connection);
+    }
+
+    Destroy() {
+        for (const connection of this.connections) {
+            connection.Disconnect();
+        }
+        this.connections.clear();
+        print(`NetworkClient for namespace "${this.namespace ?? "default"}" has been cleaned up.`);
+    }
+}
+
+// Export the module
+export = {
+    NetworkServer,
+    NetworkClient,
 };
-
-// Initialize the remotes on the server or client
-if (RunService.IsServer()) {
-    sendData.OnServerEvent.Connect((player, cmd, ...args) => {
-        RemoteMessenger._ServerReceive(player, cmd as string, ...args);
-    });
-
-    getData.OnServerInvoke = (player, cmd, ...args) => {
-        return RemoteMessenger._ServerReceive(player, cmd as string, ...args);
-    };
-} else if (RunService.IsClient()) {
-    sendData.OnClientEvent.Connect((cmd, ...args) => {
-        RemoteMessenger._ClientReceive(cmd as string, ...args);
-    });
-
-    getData.OnClientInvoke = (cmd, ...args) => {
-        return RemoteMessenger._ClientReceive(cmd as string, ...args);
-    };
-}
-
-export default RemoteMessenger;
