@@ -1,10 +1,11 @@
+
 type Data = string | boolean | number | Vector3
 
-interface NestedData{
+interface NestedData {
     [key: string]: Data | Record<string, Data>
 }
 
-interface KeyBindInterface{
+interface KeyBindInterface {
     [key: string]: {
         PC: string;
         Xbox: string;
@@ -13,7 +14,6 @@ interface KeyBindInterface{
 
 interface EquipedAbiliesInterface {
     [Melee: string]: string,
-    Ranged: string,
     Evade: string
 }
 
@@ -40,13 +40,12 @@ const DefaultData = {
         CanUseAbilities: true,
         EquipedAbilities: {
             Melee: 'Box',
-            Ranged: 'Brick',
             Evade: 'Zoom'
         },
         KeyBinds: {
             Evade: {
                 PC: "Q",
-                Xbox: "Button A"
+                Xbox: "Button B"
             }
         }
     },
